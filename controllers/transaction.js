@@ -1,64 +1,105 @@
 // Imports
-const { TRANSACTION_SUCCESSFULLY_REGISTERED } = require('../utils/constants');
+const { TRANSACTION_SUCCESSFULLY_REGISTERED, NO_TRANSACTIONS_LISTED, TRANSACTION_NOT_CREATED } = require('../utils/constants');
 
 // Models
 const { Transaction } = require ('../models/transaction');
-const { User } = require ('../models/user');
 const { generate } = require('../utils/id_generator');
+const { getDate } = require('../utils/date_handler');
+const { Op } = require("sequelize");
 
-// Controllers
+// get savings
 const getTransactions = async(req, res) => {
-   try {
-        // find match with username
-        console.log("headers: ", req.headers);
-        const transaction = await Transaction.findAll(
-            {
-                where : {
-                    trns_type : req.headers.type,
-                    user_id : req.headers.user
+    let type = req.query.type;
+    let user = req.query.user;
+    let year = req.query.year;
+    let month = req.query.month;
+    if (req.query.type == 'saving') {
+        try {
+            // find match with username
+            const transaction = await Transaction.findAll(
+                {
+                    where : {
+                        trns_type : type,
+                        user_id : user
+                    }
+                },
+                {
+                    attributes: ['trns_concept', 'trns_amount']
                 }
-            },
-            {
-                attributes: ['trns_concept', 'trns_amount', 'trns_date']
-            }
-        );
-        
-        res.json(
-            transaction
-        );
-   } catch (e) {
-       console.log("Error> ", e);
-       res
-           .status(500)
-           .json( SERVER_ERRROR );
-   }
+            );
+            res.json(
+                transaction
+            );
+        } catch (e) {
+           console.log("Error> ", e);
+           res
+               .status(500)
+               .json( NO_TRANSACTIONS_LISTED );
+        }
+    } else {
+        let date = getDate(year, month)
+        try {
+            
+            // find match with username
+            const transaction = await Transaction.findAll(
+                {
+                    where : {
+                        trns_type : req.query.type,
+                        trns_date : {
+                            [Op.gte] : (year+"-"+month+"-01"),
+                            [Op.lte] : date
+                        },
+                        user_id : req.query.user
+                    }
+                },
+                {
+                    attributes: ['trns_concept', 'trns_amount']
+                }
+            );
+            
+            res.json(
+                transaction
+            );
+        } catch (e) {
+           console.log("Error> ", e);
+           res
+               .status(500)
+               .json( NO_TRANSACTIONS_LISTED );
+        }
+    }
 };
 
 
-// Create user
+// Create transaction
 const createTransaction = async(req, res) => {
 
     // Saving headers into local variables
-    let key = req.headers.id;
+    let key = req.headers.key;
     let type = req.headers.type;
     let amount = req.headers.amount;
     let concept = req.headers.concept;
     let date = new Date().toJSON().slice(0, 10);
     let user = req.headers.user;
 
+    let trns_id = generate(key);
+
     try {
         // Creating user in DB
-        const transaction = await Transaction.create({
-            trns_id: key = generate(key),
-            trns_type: type,
-            trns_amount: amount,
-            trns_concept: concept,
-            trns_date: date,
-            user_id: user
+        const [transaction, created] = await Transaction.findOrCreate({
+            where: { trns_id : trns_id },
+            defaults: {
+                trns_id: trns_id,
+                trns_type: type,
+                trns_amount: amount,
+                trns_concept: concept,
+                trns_date: date,
+                user_id: user
+            }
         });
         res.json(
             {
-                message: TRANSACTION_SUCCESSFULLY_REGISTERED
+                transaction: transaction,
+                created: true
             }
         );
     } catch (e) {
@@ -67,7 +108,7 @@ const createTransaction = async(req, res) => {
            .status(500)
            .json(
                 {
-                    message: "No se puedo crear el hecho económico."
+                    message: TRANSACTION_NOT_CREATED
                 }
             );
     }

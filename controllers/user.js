@@ -1,6 +1,5 @@
 // Imports
-const { INVALID_PASSWORD, USER_DOES_NOT_EXIST, CREDENTIALS_SUCCESSFULLY_VALIDATED } = require('../utils/constants');
-
+const { INVALID_PASSWORD, USER_NOTE_CREATED, USER_DOES_NOT_EXIST, CREDENTIALS_SUCCESSFULLY_VALIDATED } = require('../utils/constants');
 const bcrypt = require('bcrypt');
 
 // Models
@@ -15,7 +14,7 @@ const loginUser = async(req, res) => {
         // find match with username
         const user = await User.findOne( { where: { user_username : req.headers.username } } );
 
-        let isMatch = false;
+        let isMatch = 0;
 
         if (user) {
             // search auth_id in DB
@@ -27,21 +26,21 @@ const loginUser = async(req, res) => {
 
                 // Compare password from user to passwor in DB
                 isMatch = await bcrypt.compare(req.headers.password, hash)
+                console.log("isMatch: " , isMatch)
                 if (isMatch) {
-                    console.log("if match")
+                    console.log("message: " , CREDENTIALS_SUCCESSFULLY_VALIDATED)
                     res.json(
                         {
-                            message: CREDENTIALS_SUCCESSFULLY_VALIDATED,
                             user_id: user.user_id,
                             user_username: user.user_username,
-                            isMatch: isMatch
+                            isMatch: 2
                         }
                     )
                 } else {
                     res.json(
                         {
                             message: INVALID_PASSWORD,
-                            isMatch: isMatch
+                            isMatch: 1
                         }
                     )
                 }
@@ -50,7 +49,7 @@ const loginUser = async(req, res) => {
             res.json(
                 { 
                     message: USER_DOES_NOT_EXIST,
-                    isMatch: isMatch
+                    isMatch: 0
                 }
             );
         }
@@ -70,38 +69,54 @@ const createUser = async(req, res) => {
     let key2 = 2; 
 
     // Saving headers into local variables
-    let key = req.headers.id;
+    let key = req.headers.key;
     let email = req.headers.email;
     let username = req.headers.username;
-    let auth = req.headers.auth;
+    let auth = req.headers.password;
 
+    let auth_id = generate(key)
+
+    
     try {
 
         // Hashing password
         const hash = await bcrypt.hash(auth, 13);
 
         // Creating password in DB
-        const authentication = await Authentication.create({
-            auth_id: key = generate(key),
-            auth_password: hash
-        }) 
-        //console.log(authentication);
+        const [authentication, authCreated] = await Authentication.findOrCreate({
+            where: { auth_id: auth_id },
+            defaults: {
+                auth_id: auth_id,
+                auth_password: hash
+            }
+        })
+
 
         // Creating user in DB
-        const user = await User.create({
-            user_id: key2 = generate(key2),
-            user_email_address: email,
-            user_username: username,
-            auth_id: key
+        let user_id = generate(key2)
+        const [user, created] = await User.findOrCreate({
+            where: { user_id: user_id },
+            defaults: {
+                user_id: user_id,
+                user_email_address: email,
+                user_username: username,
+                auth_id: authentication.auth_id
+            }
         });
         res.json(
-            { message: "El usuario se creó correctamente" }
+            { 
+                created: created,
+                message: "El usuario se creó correctamente"
+            }
         );
     } catch (e) {
         console.log("Error", e);
        res
            .status(500)
-           .json( SERVER_ERRROR );
+           .json( {
+                created: false,
+                message: USER_NOTE_CREATED
+            });
     }
 };
 
